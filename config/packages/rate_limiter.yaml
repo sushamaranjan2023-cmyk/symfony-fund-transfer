@@ -1,0 +1,9 @@
+framework:
+    rate_limiter:
+        # 60 transfer attempts per minute per authenticated user
+        transfer_api:
+            policy: 'sliding_window'
+            limit: 60
+            interval: '1 minute'
+            lock_factory: 'lock.factory'
+            storage_service: null   # uses default cache

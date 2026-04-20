@@ -1,0 +1,12 @@
+framework:
+    cache:
+        app: cache.adapter.redis
+        default_redis_provider: '%env(REDIS_DSN)%'
+
+        pools:
+            doctrine.result_cache_pool:
+                adapter: cache.adapter.redis
+                default_lifetime: 60
+
+            doctrine.system_cache_pool:
+                adapter: cache.adapter.array

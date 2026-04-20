@@ -1,0 +1,6 @@
+framework:
+    lock:
+        enabled: true
+        resources:
+            default:
+                - '%env(REDIS_DSN)%'

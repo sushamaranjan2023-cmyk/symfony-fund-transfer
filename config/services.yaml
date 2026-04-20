@@ -1,0 +1,29 @@
+parameters:
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Kernel.php'
+
+    Redis:
+        class: \Redis
+        calls:
+            - connect: ['127.0.0.1', 6379]
+
+    # Audit logger — writes to the 'audit' Monolog channel
+    App\Service\TransferService:
+        arguments:
+            $auditLogger: '@monolog.logger.audit'
+
+    App\EventListener\ApiExceptionListener:
+        arguments:
+            $appEnv: '%kernel.environment%'
+        tags:
+            - { name: kernel.event_listener, event: kernel.exception }

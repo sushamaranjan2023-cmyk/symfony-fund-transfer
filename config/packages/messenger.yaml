@@ -1,0 +1,21 @@
+framework:
+    messenger:
+        failure_transport: failed
+
+        transports:
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000       # ms — first retry after 1s
+                    multiplier: 2     # exponential backoff: 1s, 2s, 4s
+                    max_delay: 0
+                options:
+                    stream: 'transfer_messages'
+                    group: 'transfer_workers'
+
+            failed:
+                dsn: 'doctrine://default?queue_name=failed'
+
+        routing:
+            'App\Message\TransferCompletedMessage': async

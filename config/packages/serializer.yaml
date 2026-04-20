@@ -1,0 +1,6 @@
+framework:
+    serializer:
+        enabled: true
+        enable_attributes: true
+        default_context:
+            json_encode_options: 256
