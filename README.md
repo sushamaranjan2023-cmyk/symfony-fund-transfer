@@ -158,21 +158,3 @@ Notifications and webhooks dispatch via Symfony Messenger *after* the DB transac
 | `JWT_TTL` | Token lifetime in seconds |
 | `MESSENGER_TRANSPORT_DSN` | Redis DSN for Messenger |
 
-## File structure
-
-```
-src/
-├── Controller/Api/V1/TransferController.php   # HTTP layer
-├── DTO/TransferRequest.php                    # Validated input
-├── Entity/Account.php                         # Account with bcmath debit/credit
-├── Entity/Transaction.php                     # Immutable ledger record
-├── Service/TransferService.php                # Core business logic
-├── Service/IdempotencyService.php             # Redis idempotency guard
-├── Service/DistributedLockService.php         # Redis distributed lock
-├── Repository/AccountRepository.php          # findWithPessimisticLock
-├── Repository/TransactionRepository.php
-├── Message/TransferCompletedMessage.php       # Async event
-├── MessageHandler/TransferCompletedHandler.php
-├── EventListener/ApiExceptionListener.php    # Uniform JSON errors
-└── Exception/                                 # Domain exceptions
-```
