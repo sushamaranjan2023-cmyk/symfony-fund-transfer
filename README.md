@@ -2,18 +2,6 @@
 
 REST API for secure fund transfers between accounts, built with Symfony 7, MySQL, and Redis.
 
-## Architecture
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| HTTP | Symfony 7 + JWT | Auth, routing, input validation |
-| Business logic | TransferService | Debit/credit, business rules |
-| Idempotency | Redis SET NX | Prevent duplicate processing |
-| Distributed lock | Redis Lua CAS | Serialise concurrent transfers |
-| Data integrity | MySQL InnoDB + SELECT FOR UPDATE | ACID compliance, pessimistic locking |
-| Async | Symfony Messenger | Post-commit notifications |
-| Audit | Monolog JSON | Structured audit trail |
-
 ## Requirements
 
 | Tool | Version |
@@ -37,13 +25,6 @@ docker compose exec app php bin/console doctrine:migrations:migrate --no-interac
 docker compose exec app php bin/console lexik:jwt:generate-keypair
 ```
 
-## Seed test accounts
-
-```sql
-INSERT INTO accounts (id, owner_id, currency, balance, status, version, created_at, updated_at) VALUES
-('11111111-1111-4111-8111-111111111111', 'owner-1', 'USD', '1000.00000000', 'active', 0, NOW(6), NOW(6)),
-('22222222-2222-4222-8222-222222222222', 'owner-2', 'USD', '0.00000000',    'active', 0, NOW(6), NOW(6));
-```
 
 ## API reference
 
@@ -79,37 +60,14 @@ Content-Type: application/json
 }
 ```
 
-**All response codes**
-
-| Status | Code | When |
-|--------|------|------|
-| 201 | — | Transfer completed successfully |
-| 400 | `INVALID_JSON` | Request body is not valid JSON |
-| 401 | — | Missing or invalid JWT token |
-| 403 | `ACCOUNT_NOT_ACTIVE` | Account is frozen or closed |
-| 404 | `ACCOUNT_NOT_FOUND` | Source or destination account does not exist |
-| 409 | `DUPLICATE_REQUEST` | Same idempotency key is already being processed |
-| 422 | `VALIDATION_ERROR` | Input validation failed (see `errors` field) |
-| 422 | `INSUFFICIENT_FUNDS` | Source account balance too low |
-| 422 | `CURRENCY_MISMATCH` | Account currencies do not match requested currency |
-| 422 | `SELF_TRANSFER` | Source and destination accounts are the same |
-| 503 | `SERVICE_UNAVAILABLE` | Could not acquire distributed lock — safe to retry |
-
-**Idempotency**
-
-Every request requires a unique `idempotencyKey` (UUID v4). Sending the same key twice returns the original response without processing the transfer again. Safe to retry on network failures — just reuse the same key.
-
 ## Get a JWT token
 
 ```bash
-# Windows
-php bin/console lexik:jwt:generate-token api_user
+bin/console lexik:jwt:generate-token api_user
 
-# Capture directly into a variable (PowerShell)
+# TOKEN
 $token = (php bin/console lexik:jwt:generate-token api_user 2>$null | Select-String "^ey") -replace '^\s+|\s+$',''
 ```
-
-Tokens expire after 1 hour (configurable via `JWT_TTL` in `.env`).
 
 ## Make a transfer (curl)
 
@@ -129,79 +87,70 @@ curl -X POST http://localhost:8080/api/v1/transfers \
 ## Running tests
 
 ```bash
-# Unit tests — no DB or Redis required
+# Unit tests
 php vendor/bin/phpunit tests/Unit/ --testdox
 
-# Integration tests — requires MySQL test DB and Redis
+# Integration tests
 php bin/console doctrine:migrations:migrate --env=test --no-interaction
 php vendor/bin/phpunit tests/Integration/ --testdox
-
-# Concurrent test — requires live server running on port 8080
-$env:TEST_JWT_TOKEN        = (php bin/console lexik:jwt:generate-token api_user 2>$null | Select-String "^ey") -replace '^\s+|\s+$',''
-$env:TEST_SOURCE_ACCOUNT_ID = "11111111-1111-4111-8111-111111111111"
-$env:TEST_DEST_ACCOUNT_ID   = "22222222-2222-4222-8222-222222222222"
-php vendor/bin/phpunit tests/Concurrent/ --group concurrent --testdox
-
-# All tests at once
-php vendor/bin/phpunit --testdox
 ```
 
-## Project structure
+
+## Approximate time spent
+Time spent: ~6-7 hours
+
+## Prompt
 
 ```
-src/
-├── Controller/Api/V1/TransferController.php   # HTTP layer — deserialize, validate, delegate
-├── DTO/TransferRequest.php                    # Immutable validated input object
-├── Entity/
-│   ├── Account.php                            # Balance with bcmath debit/credit
-│   ├── AccountStatus.php                      # active | frozen | closed
-│   ├── Transaction.php                        # Immutable ledger record
-│   └── TransactionStatus.php                  # pending | completed | failed | reversed
-├── Service/
-│   ├── TransferService.php                    # Core business logic
-│   ├── IdempotencyService.php                 # Redis deduplication
-│   └── DistributedLockService.php             # Redis distributed lock
-├── Repository/
-│   ├── AccountRepository.php                  # findMultipleWithPessimisticLock
-│   └── TransactionRepository.php
-├── Message/TransferCompletedMessage.php       # Async event payload
-├── MessageHandler/TransferCompletedHandler.php # Notifications, webhooks
-├── EventListener/ApiExceptionListener.php     # Uniform JSON error responses
-└── Exception/                                 # Domain exceptions
+Act as a senior backend architect with deep expertise in PHP 8.3, Symfony 7, MySQL, and Redis.
+Design and implement a production-ready API for secure fund transfers between accounts.
+This is NOT a demo project. The solution must reflect real-world financial system design with high reliability, scalability, and data integrity.
+### Functional Requirements:
+- API endpoint: POST /api/v1/transfers
+- Transfer funds between two accounts (debit + credit)
+- Validate account existence, balance, and currency
+- Prevent overdrafts
+- Ensure idempotency (same request should not process twice)
+### Non-Functional Requirements:
+- Must handle high concurrency safely
+- Ensure ACID compliance using MySQL transactions
+- Prevent race conditions (e.g., double spending)
+- Use Redis where appropriate (e.g., idempotency keys, locks, caching)
+### Technical Requirements:
+- Symfony 7 structure (controllers, services, DTOs, events, repositories)
+- Use Doctrine ORM with proper transaction handling
+- Implement pessimistic or optimistic locking (justify choice)
+- Use Redis for distributed locking or idempotency keys
+- Use Symfony Messenger for async processing (optional but preferred)
+- Include proper validation using Symfony Validator
+- Use environment-based config and secrets management
+### Security Requirements:
+- Authentication (JWT or API key)
+- Input validation and sanitization
+- Prevent replay attacks
+- Rate limiting
+- Logging and audit trail
+### Observability:
+- Structured logging (Monolog)
+- Error handling strategy
+- Metrics or tracing suggestions
+### Testing:
+- Unit tests for business logic
+- Integration tests for API endpoint
+- Simulate concurrent transfers
+### Deliverables:
+1. Folder structure
+2. Database schema (accounts, transactions)
+3. Key code snippets (Controller, Service, Repository, Locking logic)
+4. Example request/response
+5. Explanation of design decisions
+6. Edge cases handled
+7. How to run locally (Docker preferred)
+### Important:
+- Focus on correctness, consistency, and robustness over simplicity
+- Avoid shortcuts that break under concurrency
+- Explain WHY each design choice is made
 
-config/
-├── packages/                                  # Symfony bundle configuration
-│   ├── doctrine.yaml
-│   ├── messenger.yaml
-│   ├── security.yaml
-│   ├── monolog.yaml
-│   └── lexik_jwt_authentication.yaml
-└── routes/
-
-tests/
-├── Unit/Service/TransferServiceTest.php       # Pure business logic, no I/O
-├── Integration/Controller/TransferControllerTest.php  # Full HTTP stack
-└── Concurrent/ConcurrentTransferTest.php      # Parallel requests, no double-spend
 ```
-
-## Design decisions
-
-**Pessimistic locking over optimistic**
-: `SELECT FOR UPDATE` is used instead of `@Version` optimistic locking. Under high concurrency on shared accounts, optimistic locking causes retry storms — every failed attempt must re-read and re-execute from scratch. Pessimistic locking serialises at the row level; the second transaction waits a few milliseconds and succeeds immediately.
-
-**Two-layer locking**
-: A Redis distributed lock wraps the DB transaction. The Redis lock prevents multiple application nodes from even starting a transaction on the same account pair simultaneously, reducing DB lock contention. The `SELECT FOR UPDATE` is the final safety net if Redis fails.
-
-**Deadlock prevention**
-: Account IDs are sorted alphabetically before acquiring any lock (both Redis key and SQL `ORDER BY`). This ensures an A→B transfer and a B→A transfer always compete for locks in the same order, eliminating circular wait deadlocks.
-
-**bcmath for all arithmetic**
-: PHP floats use IEEE 754 binary64 — `0.1 + 0.2 !== 0.3`. Every balance calculation uses `bcadd`, `bcsub`, `bccomp` with `scale=8`. MySQL stores balances as `DECIMAL(20,8)`, which Doctrine maps to PHP `string` — never cast to float.
-
-**UUID v7 for transaction IDs**
-: UUID v7 is time-ordered. This keeps the `transactions` primary key index clustered, avoiding the random-write amplification that UUID v4 causes on large InnoDB tables.
-
-**Post-commit async dispatch**
-: Notifications and webhooks are dispatched via Symfony Messenger *after* the DB transaction commits. The transfer response is returned in ~10ms regardless of downstream latency. If a notification fails, it is retried independently without affecting the transfer result.
 
 
