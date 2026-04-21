@@ -147,7 +147,7 @@ final class TransferService
 
             // ── 6. Persist Transaction record ───────────────────────────────
             $transaction = new Transaction(
-                id:             'txn_' . uniqid(), //Uuid::v7(),  // time-ordered UUID — keeps index clustered
+                id:             (string) Uuid::v7(),  // time-ordered UUID — keeps index clustered
                 idempotencyKey: $dto->idempotencyKey,
                 sourceAccount:  $source,
                 destAccount:    $dest,

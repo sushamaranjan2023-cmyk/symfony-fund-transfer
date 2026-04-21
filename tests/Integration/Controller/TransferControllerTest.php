@@ -4,146 +4,183 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Controller;
 
-use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Uid\Uuid;
+use App\Tests\Integration\ApiTestCase;
 
-/**
- * Integration tests for POST /api/v1/transfers.
- *
- * Run with: php bin/phpunit tests/Integration/
- *
- * Prerequisites:
- *   - Test database seeded via fixtures or the setUp() helper below
- *   - Redis available at REDIS_DSN
- *   - Valid JWT token available (see getJwt())
- */
-class TransferControllerTest extends WebTestCase
+class TransferControllerTest extends ApiTestCase
 {
-    private const ENDPOINT = '/api/v1/transfers';
-
     public function testSuccessfulTransferReturns201(): void
     {
-        $client = static::createClient();
-
-        $response = $this->postTransfer($client, [
-            'sourceAccountId'      => $this->getSeededSourceAccountId(),
-            'destinationAccountId' => $this->getSeededDestAccountId(),
-            'amount'               => '10.00',
+        $this->post('/api/v1/transfers', [
+            'sourceAccountId'      => self::SOURCE_ID,
+            'destinationAccountId' => self::DEST_ID,
+            'amount'               => '100.00',
             'currency'             => 'USD',
-            'idempotencyKey'       => (string) Uuid::v4(),
+            'idempotencyKey'       => '00000001-0000-4000-8000-900000000001',
         ]);
 
-        $this->assertResponseStatusCodeSame(Response::HTTP_CREATED);
-        $data = json_decode($client->getResponse()->getContent(), true);
-        $this->assertArrayHasKey('transaction_id', $data);
+        $this->assertSame(201, $this->getStatusCode());
+        $data = $this->getResponseData();
+        
         $this->assertSame('completed', $data['status']);
+        $this->assertSame('100.00', $data['amount']);
+        $this->assertSame('USD', $data['currency']);
+        $this->assertArrayHasKey('transaction_id', $data);
+        $this->assertArrayHasKey('completed_at', $data);
+        $this->assertSame('900.00000000', $this->getAccountBalance(self::SOURCE_ID));
+        $this->assertSame('600.00000000', $this->getAccountBalance(self::DEST_ID));
+        $this->assertSame(1, $this->countTransactions());
     }
 
-    public function testIdempotentReplayReturns201WithSameBody(): void
+    public function testIdempotentReplayReturnsSameResponse(): void
     {
-        $client         = static::createClient();
-        $idempotencyKey = (string) Uuid::v4();
-        $payload        = [
-            'sourceAccountId'      => $this->getSeededSourceAccountId(),
-            'destinationAccountId' => $this->getSeededDestAccountId(),
-            'amount'               => '5.00',
+        $body = [
+            'sourceAccountId'      => self::SOURCE_ID,
+            'destinationAccountId' => self::DEST_ID,
+            'amount'               => '50.00',
             'currency'             => 'USD',
-            'idempotencyKey'       => $idempotencyKey,
+            'idempotencyKey'       => '00000002-0000-4000-8000-000000000002',
         ];
 
-        $this->postTransfer($client, $payload);
-        $firstBody = $client->getResponse()->getContent();
+        $this->post('/api/v1/transfers', $body);
+        $this->assertSame(201, $this->getStatusCode());
+        $first = $this->getResponseData();
 
-        // Send the exact same request again
-        $this->postTransfer($client, $payload);
-        $secondBody = $client->getResponse()->getContent();
+        $this->post('/api/v1/transfers', $body);
+        $second = $this->getResponseData();
 
-        $this->assertSame($firstBody, $secondBody);
-    }
-
-    public function testMissingBodyReturns400(): void
-    {
-        $client = static::createClient();
-        $client->request(
-            'POST',
-            self::ENDPOINT,
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->getJwt(), 'CONTENT_TYPE' => 'application/json'],
-            '{bad json'
-        );
-
-        $this->assertResponseStatusCodeSame(Response::HTTP_BAD_REQUEST);
-    }
-
-    public function testMissingFieldsReturns422(): void
-    {
-        $client = static::createClient();
-        $client->request(
-            'POST',
-            self::ENDPOINT,
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->getJwt(), 'CONTENT_TYPE' => 'application/json'],
-            json_encode(['amount' => '10.00'])
-        );
-
-        $this->assertResponseStatusCodeSame(Response::HTTP_UNPROCESSABLE_ENTITY);
-        $data = json_decode($client->getResponse()->getContent(), true);
-        $this->assertArrayHasKey('errors', $data);
-    }
-
-    public function testUnauthenticatedRequestReturns401(): void
-    {
-        $client = static::createClient();
-        $client->request('POST', self::ENDPOINT, [], [], ['CONTENT_TYPE' => 'application/json'], '{}');
-        $this->assertResponseStatusCodeSame(Response::HTTP_UNAUTHORIZED);
+        $this->assertSame($first['transaction_id'], $second['transaction_id']);
+        $this->assertSame('950.00000000', $this->getAccountBalance(self::SOURCE_ID));
+        $this->assertSame(1, $this->countTransactions());
     }
 
     public function testInsufficientFundsReturns422(): void
     {
-        $client   = static::createClient();
-        $response = $this->postTransfer($client, [
-            'sourceAccountId'      => $this->getSeededSourceAccountId(),
-            'destinationAccountId' => $this->getSeededDestAccountId(),
-            'amount'               => '999999999.00',  // way over any balance
+        $this->post('/api/v1/transfers', [
+            'sourceAccountId'      => self::SOURCE_ID,
+            'destinationAccountId' => self::DEST_ID,
+            'amount'               => '9999.00',
             'currency'             => 'USD',
-            'idempotencyKey'       => (string) Uuid::v4(),
+            'idempotencyKey'       => '00000003-0000-4000-8000-000000000003',
         ]);
 
-        $this->assertResponseStatusCodeSame(Response::HTTP_UNPROCESSABLE_ENTITY);
-        $data = json_decode($client->getResponse()->getContent(), true);
-        $this->assertSame('INSUFFICIENT_FUNDS', $data['code']);
+        $this->assertSame(422, $this->getStatusCode());
+        $this->assertSame('INSUFFICIENT_FUNDS', $this->getResponseData()['code']);
+        $this->assertSame('1000.00000000', $this->getAccountBalance(self::SOURCE_ID));
+        $this->assertSame(0, $this->countTransactions());
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private function postTransfer($client, array $payload): void
+    public function testSelfTransferReturns422(): void
     {
-        $client->request(
-            'POST',
-            self::ENDPOINT,
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->getJwt(), 'CONTENT_TYPE' => 'application/json'],
-            json_encode($payload)
+        $this->post('/api/v1/transfers', [
+            'sourceAccountId'      => self::SOURCE_ID,
+            'destinationAccountId' => self::SOURCE_ID,
+            'amount'               => '10.00',
+            'currency'             => 'USD',
+            'idempotencyKey'       => '00000004-0000-4000-8000-000000000004',
+        ]);
+
+        $this->assertSame(422, $this->getStatusCode());
+        $this->assertSame('SELF_TRANSFER', $this->getResponseData()['code']);
+    }
+
+    public function testCurrencyMismatchReturns422(): void
+    {
+        $this->post('/api/v1/transfers', [
+            'sourceAccountId'      => self::SOURCE_ID,
+            'destinationAccountId' => self::EUR_ID,
+            'amount'               => '10.00',
+            'currency'             => 'USD',
+            'idempotencyKey'       => '00000005-0000-4000-8000-000000000005',
+        ]);
+
+        $this->assertSame(422, $this->getStatusCode());
+        $this->assertSame('CURRENCY_MISMATCH', $this->getResponseData()['code']);
+    }
+
+    public function testFrozenAccountReturns403(): void
+    {
+        $this->post('/api/v1/transfers', [
+            'sourceAccountId'      => self::FROZEN_ID,
+            'destinationAccountId' => self::DEST_ID,
+            'amount'               => '10.00',
+            'currency'             => 'USD',
+            'idempotencyKey'       => '00000006-0000-4000-8000-000000000006',
+        ]);
+
+        $this->assertSame(403, $this->getStatusCode());
+        $this->assertSame('ACCOUNT_NOT_ACTIVE', $this->getResponseData()['code']);
+    }
+
+    public function testNonExistentAccountReturns404(): void
+    {
+        $this->post('/api/v1/transfers', [
+            'sourceAccountId'      => '00000000-0000-4000-8000-000000000000',
+            'destinationAccountId' => self::DEST_ID,
+            'amount'               => '10.00',
+            'currency'             => 'USD',
+            'idempotencyKey'       => '00000007-0000-4000-8000-000000000007',
+        ]);
+
+        $this->assertSame(404, $this->getStatusCode());
+        $this->assertSame('ACCOUNT_NOT_FOUND', $this->getResponseData()['code']);
+    }
+
+    public function testMissingFieldsReturns422(): void
+    {
+        $this->post('/api/v1/transfers', ['amount' => '10.00']);
+
+        $this->assertSame(422, $this->getStatusCode());
+        $this->assertSame('VALIDATION_ERROR', $this->getResponseData()['code']);
+    }
+
+    public function testInvalidJsonReturns400(): void
+    {
+        $this->client->request(
+            'POST', '/api/v1/transfers', [], [],
+            ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token, 'CONTENT_TYPE' => 'application/json'],
+            '{bad json'
         );
+
+        $this->assertSame(400, $this->getStatusCode());
+        $this->assertSame('INVALID_JSON', $this->getResponseData()['code']);
     }
 
-    private function getJwt(): string
+    public function testMissingTokenReturns401(): void
     {
-        // In a real test suite, generate this via lexik:jwt:generate-token or a test fixture
-        return $_ENV['TEST_JWT_TOKEN'] ?? 'replace_with_valid_test_jwt';
+        $this->client->request(
+            'POST', '/api/v1/transfers', [], [],
+            ['CONTENT_TYPE' => 'application/json'],
+            '{}'
+        );
+
+        $this->assertSame(401, $this->getStatusCode());
     }
 
-    private function getSeededSourceAccountId(): string
+    public function testInvalidTokenReturns401(): void
     {
-        return $_ENV['TEST_SOURCE_ACCOUNT_ID'] ?? 'replace_with_seeded_account_uuid';
+        $this->post('/api/v1/transfers', [
+            'sourceAccountId'      => self::SOURCE_ID,
+            'destinationAccountId' => self::DEST_ID,
+            'amount'               => '10.00',
+            'currency'             => 'USD',
+            'idempotencyKey'       => '00000008-0000-4000-8000-000000000008',
+        ], 'invalid.jwt.token');
+
+        $this->assertSame(401, $this->getStatusCode());
     }
 
-    private function getSeededDestAccountId(): string
+    public function testSmallDecimalAmountHandledExactly(): void
     {
-        return $_ENV['TEST_DEST_ACCOUNT_ID'] ?? 'replace_with_seeded_account_uuid';
+        $this->post('/api/v1/transfers', [
+            'sourceAccountId'      => self::SOURCE_ID,
+            'destinationAccountId' => self::DEST_ID,
+            'amount'               => '0.00000001',
+            'currency'             => 'USD',
+            'idempotencyKey'       => '00000009-0000-4000-8000-000000000009',
+        ]);
+
+        $this->assertSame(201, $this->getStatusCode());
+        $this->assertSame('999.99999999', $this->getAccountBalance(self::SOURCE_ID));
+        $this->assertSame('500.00000001', $this->getAccountBalance(self::DEST_ID));
     }
 }

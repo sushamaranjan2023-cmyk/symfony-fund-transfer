@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-final class IdempotencyService
+class IdempotencyService
 {
     private const PREFIX          = 'idempotency:';
     private const IN_PROGRESS_TTL = 30;

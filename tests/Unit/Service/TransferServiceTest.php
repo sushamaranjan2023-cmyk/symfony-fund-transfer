@@ -195,7 +195,7 @@ class TransferServiceTest extends TestCase
     private function makeAccount(string $id, string $currency, string $balance): Account
     {
         $account = new Account(
-            id:             Uuid::fromString($id),
+            id:             $id,
             ownerId:        (string) Uuid::v4(),
             currency:       $currency,
             initialBalance: $balance,

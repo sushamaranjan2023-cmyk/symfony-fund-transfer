@@ -7,7 +7,7 @@ namespace App\Service;
 /**
  * Distributed lock using native php-redis extension.
  */
-final class DistributedLockService
+class DistributedLockService
 {
     private const PREFIX  = 'lock:';
     private const TTL_MS  = 10_000;
