@@ -1,6 +1,6 @@
 # Fund Transfer API — Symfony 7
 
-Production-ready REST API for secure fund transfers between accounts.
+REST API for secure fund transfers between accounts.
 
 ## Architecture at a glance
 
@@ -52,41 +52,6 @@ curl -X POST http://localhost:8080/api/v1/transfers \
   }'
 ```
 
-## Quick start (Local XAMPP)
-
-```bash
-# 1. Copy .env.example to .env and update with your local settings
-cp .env.example .env
-# Edit .env to match your XAMPP MySQL and Redis:
-#   DATABASE_URL=mysql://root:@127.0.0.1:3306/fund_transfer...
-#   REDIS_DSN=redis://127.0.0.1:6379
-
-# 2. Install dependencies
-composer install
-
-# 3. Create database and run migrations
-php bin/console doctrine:migrations:migrate
-
-# 4. Generate JWT keys
-php bin/console lexik:jwt:generate-keypair
-
-# 5. Start the async worker (in a separate terminal)
-php bin/console messenger:consume async -vv
-
-# 6. Run the built-in server
-php -S 127.0.0.1:8080 -t public/
-```
-
-## Seed test accounts (optional)
-
-
-```bash
-docker compose exec app php bin/console doctrine:query:sql \
-  "INSERT INTO accounts (id, owner_id, currency, balance, status, version, created_at, updated_at)
-   VALUES
-   ('11111111-1111-4111-8111-111111111111', 'aaaa0000-0000-4000-8000-000000000001', 'USD', '1000.00000000', 'active', 0, NOW(6), NOW(6)),
-   ('22222222-2222-4222-8222-222222222222', 'bbbb0000-0000-4000-8000-000000000002', 'USD', '0.00000000',    'active', 0, NOW(6), NOW(6))"
-```
 
 ## Run tests
 
@@ -193,21 +158,3 @@ Notifications and webhooks dispatch via Symfony Messenger *after* the DB transac
 | `JWT_TTL` | Token lifetime in seconds |
 | `MESSENGER_TRANSPORT_DSN` | Redis DSN for Messenger |
 
-## File structure
-
-```
-src/
-├── Controller/Api/V1/TransferController.php   # HTTP layer
-├── DTO/TransferRequest.php                    # Validated input
-├── Entity/Account.php                         # Account with bcmath debit/credit
-├── Entity/Transaction.php                     # Immutable ledger record
-├── Service/TransferService.php                # Core business logic
-├── Service/IdempotencyService.php             # Redis idempotency guard
-├── Service/DistributedLockService.php         # Redis distributed lock
-├── Repository/AccountRepository.php          # findWithPessimisticLock
-├── Repository/TransactionRepository.php
-├── Message/TransferCompletedMessage.php       # Async event
-├── MessageHandler/TransferCompletedHandler.php
-├── EventListener/ApiExceptionListener.php    # Uniform JSON errors
-└── Exception/                                 # Domain exceptions
-```
